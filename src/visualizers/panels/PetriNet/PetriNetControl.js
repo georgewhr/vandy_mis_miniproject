@@ -15,7 +15,7 @@ define([
 
     'use strict';
 
-    function SimSMControl(options) {
+    function PetriNetControl(options) {
 
         this._logger = options.logger.fork('Control');
 
@@ -39,7 +39,7 @@ define([
         this._logger.info('georgewhr cror finished');
     }
 
-    SimSMControl.prototype._initWidgetEventHandlers = function () {
+    PetriNetControl.prototype._initWidgetEventHandlers = function () {
         this._widget.onNodeClick = function (id) {
             // Change the current active object
             WebGMEGlobal.State.registerActiveObject(id);
@@ -50,7 +50,7 @@ define([
     // One major concept here is with managing the territory. The territory
     // defines the parts of the project that the visualizer is interested in
     // (this allows the browser to then only load those relevant parts).
-    SimSMControl.prototype.selectedObjectChanged = function (nodeId) {
+    PetriNetControl.prototype.selectedObjectChanged = function (nodeId) {
         var self = this;
         console.log("georgewhr selectedObjectChanged")
 
@@ -77,8 +77,8 @@ define([
     };
 
     /* * * * * * * * Node Event Handling * * * * * * * */
-    SimSMControl.prototype._eventCallback = function (events) {
-        console.log("georgewhr _eventCallback")
+    PetriNetControl.prototype._eventCallback = function (events) {
+        console.log("georgewhr node _eventCallback")
         const self = this;
         console.log(events);
         events.forEach(event => {
@@ -101,7 +101,7 @@ define([
     };
 
 
-    SimSMControl.prototype._stateActiveObjectChanged = function (model, activeObjectId) {
+    PetriNetControl.prototype._stateActiveObjectChanged = function (model, activeObjectId) {
         console.log("georgewhr _stateActiveObjectChanged")
         if (this._currentNodeId === activeObjectId) {
             // The same node selected as before - do not trigger
@@ -111,7 +111,7 @@ define([
     };
 
     /* * * * * * * * Machine manipulation functions * * * * * * * */
-    SimSMControl.prototype._initSM = function () {
+    PetriNetControl.prototype._initSM = function () {
         console.log("georgewhr _initSM")
         const self = this;
         //just for the ease of use, lets create a META dictionary
@@ -125,17 +125,20 @@ define([
         //we need our states (names, position, type), need the set of next state (with event names)
         const smNode = self._client.getNode(self._currentNodeId);
         const elementIds = smNode.getChildrenIds();
+        console.log("display all elementIds")
+        console.log(elementIds)
         const sm = {init: null, states:{}};
         elementIds.forEach(elementId => {
             console.log("george _initSM 2");
             const node = self._client.getNode(elementId);
             // the simple way of checking type
-            if (node.isTypeOf(META['State'])) {
+            if (node.isTypeOf(META['Place']) || node.isTypeOf(META['Transition'])) {
                 console.log("george _initSM 3");
                 //right now we only interested in states...
-                const state = {name: node.getAttribute('name'), next:{}, position: node.getRegistry('position'), isEnd: node.isTypeOf(META['End'])};
+                const state = {name: node.getAttribute('name'), marking: node.getAttribute('Marking'), next:{}, position: node.getRegistry('position'), isEnd: node.getAttribute('name') === "End"};
                 // one way to check meta-type in the client context - though it does not check for generalization types like State
-                if ('Init' === self._client.getNode(node.getMetaTypeId()).getAttribute('name')) {
+                // if ('Init' === self._client.getNode(node.getMetaTypeId()).getAttribute('name')) {
+                if ('Init' === node.getAttribute('name')) {
                     sm.init = elementId;
                 }
 
@@ -143,8 +146,8 @@ define([
                 elementIds.forEach(nextId => {
                     console.log("george _initSM 4");
                     const nextNode = self._client.getNode(nextId);
-                    if(nextNode.isTypeOf(META['Transition']) && nextNode.getPointerId('src') === elementId) {
-                        state.next[nextNode.getAttribute('event')] = nextNode.getPointerId('dst');
+                    if(nextNode.isTypeOf(META['Arc']) && nextNode.getPointerId('src') === elementId) {
+                        state.next[nextNode.getAttribute('name')] = nextNode.getPointerId('dst');
                     }
                 });
                 sm.states[elementId] = state;
@@ -155,14 +158,14 @@ define([
         self._widget.initMachine(sm);
     };
 
-    SimSMControl.prototype.clearSM = function () {
+    PetriNetControl.prototype.clearSM = function () {
         console.log("georgewhr clear SM")
         const self = this;
         self._networkRootLoaded = false;
         self._widget.destroyMachine();
     };
 
-    SimSMControl.prototype.setFireableEvents = function (events) {
+    PetriNetControl.prototype.setFireableEvents = function (events) {
         this._fireableEvents = events;
         console.log("georgewhr setFireableEvents")
         if (events && events.length > 1) {
@@ -187,21 +190,21 @@ define([
     };
 
     /* * * * * * * * Visualizer life cycle callbacks * * * * * * * */
-    SimSMControl.prototype.destroy = function () {
+    PetriNetControl.prototype.destroy = function () {
         this._detachClientEventListeners();
         this._removeToolbarItems();
     };
 
-    SimSMControl.prototype._attachClientEventListeners = function () {
+    PetriNetControl.prototype._attachClientEventListeners = function () {
         this._detachClientEventListeners();
         WebGMEGlobal.State.on('change:' + CONSTANTS.STATE_ACTIVE_OBJECT, this._stateActiveObjectChanged, this);
     };
 
-    SimSMControl.prototype._detachClientEventListeners = function () {
+    PetriNetControl.prototype._detachClientEventListeners = function () {
         WebGMEGlobal.State.off('change:' + CONSTANTS.STATE_ACTIVE_OBJECT, this._stateActiveObjectChanged);
     };
 
-    SimSMControl.prototype.onActivate = function () {
+    PetriNetControl.prototype.onActivate = function () {
         this._attachClientEventListeners();
         this._displayToolbarItems();
 
@@ -210,33 +213,25 @@ define([
         }
     };
 
-    SimSMControl.prototype.onDeactivate = function () {
+    PetriNetControl.prototype.onDeactivate = function () {
         this._detachClientEventListeners();
         this._hideToolbarItems();
     };
 
     /* * * * * * * * * * Updating the toolbar * * * * * * * * * */
-    SimSMControl.prototype._displayToolbarItems = function () {
+    PetriNetControl.prototype._displayToolbarItems = function () {
         console.log("georgewhr _displayToolbarItems")
 
         if (this._toolbarInitialized === true) {
             for (var i = this._toolbarItems.length; i--;) {
                 this._toolbarItems[i].show();
             }
-            if (this._fireableEvents === null) {
-                this.$btnEventSelector.hide();
-                this.$btnSingleEvent.hide();
-            } else if (this._fireableEvents.length == 1) {
-                this.$btnEventSelector.hide();
-            } else {
-                this.$btnSingleEvent.hide();
-            }
         } else {
             this._initializeToolbar();
         }
     };
 
-    SimSMControl.prototype._hideToolbarItems = function () {
+    PetriNetControl.prototype._hideToolbarItems = function () {
 
         if (this._toolbarInitialized === true) {
             for (var i = this._toolbarItems.length; i--;) {
@@ -245,7 +240,7 @@ define([
         }
     };
 
-    SimSMControl.prototype._removeToolbarItems = function () {
+    PetriNetControl.prototype._removeToolbarItems = function () {
 
         if (this._toolbarInitialized === true) {
             for (var i = this._toolbarItems.length; i--;) {
@@ -254,7 +249,7 @@ define([
         }
     };
 
-    SimSMControl.prototype._initializeToolbar = function () {
+    PetriNetControl.prototype._initializeToolbar = function () {
         console.log("georgewhr _initializeToolbar")
         var self = this,
             toolBar = WebGMEGlobal.Toolbar;
@@ -263,16 +258,16 @@ define([
 
         this._toolbarItems.push(toolBar.addSeparator());
 
-        /************** Go to hierarchical parent button ****************/
-        this.$btnReachCheck = toolBar.addButton({
-            title: 'Check state machine reachability properties georgess',
+        this.$btnPetriCheck = toolBar.addDropDownButton({
+            title: 'This is Interpreter',
             icon: 'glyphicon glyphicon-question-sign',
+            
             clickFn: function (/*data*/) {
-                const context = self._client.getCurrentPluginContext('ReachCheck ',self._currentNodeId, []);
+                const context = self._client.getCurrentPluginContext('PetriCheck',self._currentNodeId, []);
                 // !!! it is important to fill out or pass an empty object as the plugin config otherwise we might get errors...
                 context.pluginConfig = {};
                 self._client.runServerPlugin(
-                    'ReachCheck ', 
+                    'PetriCheck', 
                     context, 
                     function(err, result){
                         // here comes any additional processing of results or potential errors.
@@ -280,33 +275,77 @@ define([
                         console.log('plugin result:', result);
                 });
             }
-        });
+        });  
 
-        this._toolbarItems.push(this.$btnReachCheck);
+        this.$btnPetriCheck.addButton({
+            text: "Check Free-choice petri net",
+            title: 'Check Free-choice petri net​ ',
+            // data: {event: event},
+            clickFn: data => {
+                console.log("It's Free-choice petri net")
+                const context = self._client.getCurrentPluginContext('PetriNetCheck ',self._currentNodeId, []);
+                context.pluginConfig = {};
+                self._client.runServerPlugin(
+                    'PetriNetCheck ', 
+                    context, 
+                    function(err, result){
+                        console.log('plugin err:', err);
+                        console.log('plugin result:', result);
+                });
+            }
+        });  
 
-        // this.$btnPetriCheck = toolBar.addButton({
-        //     title: 'Check state machine reachability properties george',
-        //     icon: 'glyphicon glyphicon-question-sign',
-        //     clickFn: function (/*data*/) {
-        //         const context = self._client.getCurrentPluginContext('PetriCheck',self._currentNodeId, []);
-        //         // !!! it is important to fill out or pass an empty object as the plugin config otherwise we might get errors...
-        //         context.pluginConfig = {};
-        //         self._client.runServerPlugin(
-        //             'PetriCheck', 
-        //             context, 
-        //             function(err, result){
-        //                 // here comes any additional processing of results or potential errors.
-        //                 console.log('plugin err:', err);
-        //                 console.log('plugin result:', result);
-        //         });
-        //     }
-        // });
-
-        // this._toolbarItems.push(this.$btnPetriCheck);
-
-
-        
-
+        this.$btnPetriCheck.addButton({
+            text: "Check State machine​",
+            title: 'Check State machine​​ ',
+            // data: {event: event},
+            clickFn: data => {
+                console.log("It's State machinet")
+                const context = self._client.getCurrentPluginContext('PetriNetCheck ',self._currentNodeId, []);
+                context.pluginConfig = {};
+                self._client.runServerPlugin(
+                    'PetriNetCheck ', 
+                    context, 
+                    function(err, result){
+                        console.log('plugin err:', err);
+                        console.log('plugin result:', result);
+                });
+            }
+        });  
+        this.$btnPetriCheck.addButton({
+            text: "Check Marked graph​ ",
+            title: 'Check Marked graph​ ​ ',
+            // data: {event: event},
+            clickFn: data => {
+                console.log("It's Marked graph")
+                const context = self._client.getCurrentPluginContext('PetriNetCheck ',self._currentNodeId, []);
+                context.pluginConfig = {};
+                self._client.runServerPlugin(
+                    'PetriNetCheck ', 
+                    context, 
+                    function(err, result){
+                        console.log('plugin err:', err);
+                        console.log('plugin result:', result);
+                });
+            }
+        });  
+        this.$btnPetriCheck.addButton({
+            text: "Check Workflow net",
+            title: 'Check Workflow net​ ',
+            // data: {event: event},
+            clickFn: data => {
+                console.log("Workflow net")
+                const context = self._client.getCurrentPluginContext('PetriNetCheck ',self._currentNodeId, []);
+                context.pluginConfig = {};
+                self._client.runServerPlugin(
+                    'PetriNetCheck ', 
+                    context, 
+                    function(err, result){
+                        console.log('plugin err:', err);
+                        console.log('plugin result:', result);
+                });
+            }
+        });  
         this.$btnResetMachine = toolBar.addButton({
             title: 'Reset simulator',
             icon: 'glyphicon glyphicon-fast-backward',
@@ -317,18 +356,19 @@ define([
         this._toolbarItems.push(this.$btnResetMachine);
 
         // when there are multiple events to choose from we offer a selector
-        this.$btnEventSelector = toolBar.addDropDownButton({
-            text: 'event'
-        });
-        this._toolbarItems.push(this.$btnEventSelector);
-        this.$btnEventSelector.hide();
+        // this.$btnEventSelector = toolBar.addDropDownButton({
+        //     text: 'event'
+        // });
+        // this._toolbarItems.push(this.$btnEventSelector);
+        // this.$btnEventSelector.hide();
 
         // if there is only one event we just show a play button
         this.$btnSingleEvent = toolBar.addButton({
             title: 'Fire event george',
             icon: 'glyphicon glyphicon-play',
             clickFn: function (/*data*/) {
-                self._widget.fireEvent(self._fireableEvents[0]);
+                console.log("george fire events")
+                self._widget.fireEvent();
             }
         });
         this._toolbarItems.push(this.$btnSingleEvent);
@@ -340,5 +380,5 @@ define([
         this._toolbarInitialized = true;
     };
 
-    return SimSMControl;
+    return PetriNetControl;
 });
